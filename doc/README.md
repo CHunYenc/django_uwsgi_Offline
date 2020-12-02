@@ -21,6 +21,11 @@
   - [app.ini 檔案](#appini-檔案)
 - [掛上 nginx](#掛上-nginx)
 - [權限修改](#權限修改)
+  - [暫時性的關掉或開啟 selinux](#暫時性的關掉或開啟-selinux)
+  - [永久性的關掉 selinux](#永久性的關掉-selinux)
+  - [尚未測試](#尚未測試)
+- [uwsgi 自動啟動](#uwsgi-自動啟動)
+  - [創建 uwsgi.service File](#創建-uwsgiservice-file)
 
 # 加入 nginx repos
 
@@ -45,16 +50,18 @@ enabled=1
 
 /var/www/yum-package 是我們的 rpm 檔案放入位置
 
-#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ gcc
-
-#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ python3
-
-#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ python3-devel
-
-#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ redis
-
-#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ nginx
-
+#yum install -y --downloadonly --downloaddir=/var/www/yum-package/ 
+epel-release
+gcc
+gcc-c++
+python3
+python3-devel
+redis
+nginx
+yum-utils
+clang
+htop
+screen
 
 ## 下載 sqlite3.rpm
 
@@ -117,7 +124,27 @@ Type "help", "copyright", "credits" or "license" for more information.
 
 #pip download -d /var/www/pip-package/ djangorestframework==3.9.1
 
-#pip download -d /var/www/pip-package/ django-redis==4.10.0
+#pip download -d /var/www/pip-package/ requests==2.21.0
+
+#pip download -d /var/www/pip-package/ pandas==0.23.4
+
+#pip download -d /var/www/pip-package/ simplejson==3.17.2
+
+#pip download -d /var/www/pip-package/ PyMySQL==0.9.3
+
+#pip download -d /var/www/pip-package/ redis==3.3.11
+
+#pip download -d /var/www/pip-package/ PuLP==2.3.1
+
+#pip download -d /var/www/pip-package/ django-cors-headers==3.4.0
+
+#pip download -d /var/www/pip-package/ plotly==4.6.0
+
+#pip download -d /var/www/pip-package/ matplotlib==3.0.2
+
+pip download -d /var/www/pip-package/ llvmlite==0.31.0
+
+#pip download -d /var/www/pip-package/ numba==0.41.0
 
 #pip download -d /var/www/pip-package/ uwsgi
 
@@ -128,7 +155,27 @@ Type "help", "copyright", "credits" or "license" for more information.
 
 #pip install --use-wheel --no-index --find-links=/var/www/pip-package/ djangorestframework
 
-#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ django-redis
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ requests
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ pandas
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ simplejson
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ PyMySQL
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ redis
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ PuLP
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ django-cors-headers
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ plotly
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ matplotlib
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ llvmlite
+
+#pip install --use-wheel --no-index --find-links=/var/www/pip-package/ numba
 
 #pip install --use-wheel --no-index --find-links=/var/www/pip-package/ uwsgi
 
@@ -177,26 +224,28 @@ demo  pip-package  venv  yum-package
 ## app.ini 檔案
 
 ```
-[uwsgi]
-uid = root
-gid = root
-add-gid = awesome
+
 # 替代方案, 如果 sock 無法使用的話 , edu.conf 指向 localhost:9090
-http-socket = :9090  
+http-socket = :9090
 # 主要文件夾
-chdir           = /var/www/demo
-# projectname.wsgi
-module          = demo.wsgi
+
+chdir           = /var/www/project
+# project.wsgi
+module          = project.wsgi
 # 虛擬環境位置
-home            = /var/www/venv
+home            = /var/www/project/venv
 master          = true
-processes       = 4
+enable-threads  = true
+single-interpreter = true
+processes = 4
+threads = 2
 # sock 檔的放置位置
-socket          = /var/www/demo/app.sock
+socket          = /var/www/project/app.sock
 # sock 檔的權限
 chmod-socket    = 666
 # 每次會自動清除 sock 檔及執行序
 vacuum          = true
+
 ```
 
 uwsgi app.ini
@@ -209,7 +258,26 @@ uwsgi app.ini
 
 cd /etc/nginx/default.d/
 
-vi edu.conf
+vi frontend.conf
+
+```
+# configuration of the server
+server {
+    # the port your site will be served on
+    listen 80;
+    # the domain name it will serve for
+    server_name 140.114.60.61;
+    # substitute your machine's IP address or FQDN
+
+    location / {
+	try_files $uri $uri/ /index.html;
+        root   /var/www/dist/;
+        index  index.html index.htm;
+    }
+}
+```
+
+vi backend.conf
 
 ```
 # configuration of the server
@@ -233,19 +301,41 @@ server {
 
 # 權限修改
 
-vi /etc/nginx/nginx.conf
+source_1 : [黃昏的甘蔗](https://blog.xuite.net/tolarku/blog/195633562-CentOS+%E9%97%9C%E9%96%89+selinux)
+
+source_2 : [爆走程式碼](https://dotblogs.com.tw/echo/2017/06/19/linux_selinux_mode)
+
+## 暫時性的關掉或開啟 selinux
+
+$ getenforce
+Enforcing
+$ sudo setenforce 0
+$ getenforce
+Permissive
+$ sudo setenforce 1
+$ getenforce
+Enforcing
+
+ 
+
+## 永久性的關掉 selinux 
+
+$ sudo vi /etc/sysconfig/selinux     
+
+
+``` SELINUX=enforcing ``` 更改為 ```SELINUX=disabled```
+
+
+更改完後 ```reboot``` 或 ```restart```
+
+
+## 尚未測試 
+
+#vi /etc/nginx/nginx.conf
 
 ```
 user nginx 改成 user root
 ```
-
-vi /etc/selinux/config
-
-```
-SELINUX=disabled
-```
-
-reboot
 
 vi /var/www/demo/app.ini
 
@@ -254,4 +344,10 @@ vi /var/www/demo/app.ini
 uid = root
 gid = root
 ```
+
+# uwsgi 自動啟動
+
+## 創建 uwsgi.service File 
+
+#vi /etc/systemd/system/uwsgi.service
 
